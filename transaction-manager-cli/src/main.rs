@@ -32,7 +32,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         debug!("transaction: {transaction:?}");
 
-        if let Err(e) = transaction_manager.attempt_insertion(&transaction) {
+        if let Err(e) = transaction_manager.record_transaction(&transaction) {
             warn!("Transaction failed to be inserted: transaction: {transaction:?} err: {e:?}");
         }
     }

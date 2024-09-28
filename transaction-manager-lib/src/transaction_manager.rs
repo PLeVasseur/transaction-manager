@@ -22,8 +22,9 @@ impl fmt::Display for TransactionManagerError {
 impl std::error::Error for TransactionManagerError {}
 
 pub struct TransactionManager {
-    // TODO: Made this Arc, thinking we may want to paralellize this in the future
-    //   and put it behind an Arc<RwLock>
+    // TODO: Made this an Arc<RwLock>, thinking we may have multiple
+    // concurrent requests to record transactions 
+    // (although, there's probably a better way to do that still!)
     balances: Arc<RwLock<ClientBalanceRegistry>>
 }
 
@@ -34,7 +35,7 @@ impl TransactionManager {
         }
     }
 
-    pub fn attempt_insertion(&mut self, t: &Transaction) -> Result<(), TransactionManagerError> {
+    pub fn record_transaction(&mut self, t: &Transaction) -> Result<(), TransactionManagerError> {
         debug!("Transaction: {t:?}");
 
         match t {
@@ -55,6 +56,16 @@ impl TransactionManager {
     fn handle_withdrawal(&mut self, w: &Withdrawal) -> Result<(), TransactionManagerError> {
         debug!("{w:?}");
 
+        let mut registry = self.balances.write().unwrap();
+
+        let client_account = registry.client_balances.entry(w.client).or_default();
+        trace!("client_account, prior: {client_account:?}");
+
+        client_account.total -= w.amount;
+        client_account.available -= w.amount;
+
+        trace!("client_account, after: {client_account:?}");
+
         Ok(())
     }
 
@@ -64,9 +75,12 @@ impl TransactionManager {
         let mut registry = self.balances.write().unwrap();
 
         let client_account = registry.client_balances.entry(d.client).or_default();
+        trace!("client_account, prior: {client_account:?}");
 
         client_account.total += d.amount;
         client_account.available += d.amount;
+
+        trace!("client_account, after: {client_account:?}");
 
         Ok(())
     }
@@ -99,24 +113,36 @@ mod tests {
 
     // TODO: Consider a few corner cases here
     // * rejecting transaction IDs we've already seen?
+    // * rejecting if amount is negative?
     
+    fn test_setup() {
+        env_logger::init();
+    }
+
     #[test]
     fn test_rejecting_duplicate_transaction_ids() {
 
     }
 
     #[test]
+    fn test_negative_amount_deposit() {
+        
+    }
+
+    #[test]
     fn test_simple_deposit_withdrawal() {
+        test_setup();
+
         let mut tm = TransactionManager::new();
 
         let deposit = Transaction::Deposit(Deposit::new(1, 1, 32.0));
         let withdrawal = Transaction::Withdrawal(Withdrawal::new(1, 2, 20.0));
 
-        tm.attempt_insertion(&deposit).unwrap();
-        tm.attempt_insertion(&withdrawal).unwrap();
+        tm.record_transaction(&deposit).unwrap();
+        tm.record_transaction(&withdrawal).unwrap();
 
         let mut internal = HashMap::new();
-        let client_1_balance = ClientBalance::new(20.0, 0.0, 20.0, false);
+        let client_1_balance = ClientBalance::new(12.0, 0.0, 12.0, false);
         internal.insert(1, client_1_balance);
         let expected_balances = ClientBalanceRegistry::load_registry(internal);
 
