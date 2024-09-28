@@ -14,6 +14,7 @@ pub enum TransactionManagerError {
     AccountLocked,
     DuplicateTransactionId(u32),
     DisputedTransactionDoesNotExist(u32),
+    NoOpenDispute(u32),
     NegativeAmountNotAllowed,
 }
 
@@ -31,7 +32,10 @@ impl fmt::Display for TransactionManagerError {
                 write!(f, "DuplicateTransactionId({duped_id}")
             }
             TransactionManagerError::DisputedTransactionDoesNotExist(tx) => {
-                write!(f, "DisputedTransactionDoesNotExist({tx}")
+                write!(f, "DisputedTransactionDoesNotExist({tx})")
+            }
+            TransactionManagerError::NoOpenDispute(tx) => {
+                write!(f, "NoOpenDispute({tx})")
             }
             TransactionManagerError::NegativeAmountNotAllowed => {
                 write!(f, "NegativeAmountNotAllowed")
@@ -218,6 +222,12 @@ impl TransactionManager {
             return Err(TransactionManagerError::AccountLocked);
         }
 
+        let was_disputed = client_account.disputed_transactions.remove(&c.tx);
+
+        if !was_disputed {
+            return Err(TransactionManagerError::NoOpenDispute(c.tx));
+        }
+
         let disputed_transaction = self.history.get(&c.tx);
         trace!("disputed_transaction: {disputed_transaction:?}");
 
@@ -254,6 +264,12 @@ impl TransactionManager {
             return Err(TransactionManagerError::AccountLocked);
         }
 
+        let was_disputed = client_account.disputed_transactions.remove(&r.tx);
+
+        if !was_disputed {
+            return Err(TransactionManagerError::NoOpenDispute(r.tx));
+        }
+
         let disputed_transaction = self.history.get(&r.tx);
         trace!("disputed_transaction: {disputed_transaction:?}");
 
@@ -268,8 +284,6 @@ impl TransactionManager {
         // TODO: Is it possible for this to go negative? Should check
         client_account.available += dep.amount;
         client_account.held -= dep.amount;
-
-        let _ = client_account.disputed_transactions.remove(&r.tx);
 
         trace!("client_account, after: {client_account:?}");
 
@@ -527,6 +541,60 @@ mod tests {
         let err = tm.record_transaction(&blocked_transaction).unwrap_err();
 
         assert_eq!(err, TransactionManagerError::NegativeAmountNotAllowed);
+
+        let client_1_balance = ClientBalance::new(32.0, 0.0, 32.0, false, HashSet::new());
+        let internal = HashMap::from([(1, client_1_balance)]);
+        let expected_balances = ClientBalanceRegistry::load_registry(internal);
+
+        let actual_balance = tm.retrieve_client_balances();
+
+        assert_eq!(actual_balance, expected_balances);
+    }
+
+    #[test]
+    fn test_resolve_dispute_that_doesnt_exist() {
+        test_setup();
+
+        let mut tm = TransactionManager::new();
+
+        let transactions = vec![
+            Transaction::Deposit(Deposit::new(1, 1, 32.0)),
+        ];
+
+        for transaction in &transactions {
+            tm.record_transaction(transaction).unwrap();
+        }
+
+        let blocked_transaction = Transaction::Resolve(Resolve::new(1, 1));
+        let err = tm.record_transaction(&blocked_transaction).unwrap_err();
+        assert_eq!(err, TransactionManagerError::NoOpenDispute(1));
+
+        let client_1_balance = ClientBalance::new(32.0, 0.0, 32.0, false, HashSet::new());
+        let internal = HashMap::from([(1, client_1_balance)]);
+        let expected_balances = ClientBalanceRegistry::load_registry(internal);
+
+        let actual_balance = tm.retrieve_client_balances();
+
+        assert_eq!(actual_balance, expected_balances);
+    }
+
+    #[test]
+    fn test_chargeback_dispute_that_doesnt_exist() {
+        test_setup();
+
+        let mut tm = TransactionManager::new();
+
+        let transactions = vec![
+            Transaction::Deposit(Deposit::new(1, 1, 32.0)),
+        ];
+
+        for transaction in &transactions {
+            tm.record_transaction(transaction).unwrap();
+        }
+
+        let blocked_transaction = Transaction::Chargeback(Chargeback::new(1, 1));
+        let err = tm.record_transaction(&blocked_transaction).unwrap_err();
+        assert_eq!(err, TransactionManagerError::NoOpenDispute(1));
 
         let client_1_balance = ClientBalance::new(32.0, 0.0, 32.0, false, HashSet::new());
         let internal = HashMap::from([(1, client_1_balance)]);
