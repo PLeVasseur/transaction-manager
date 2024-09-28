@@ -1,6 +1,7 @@
+use std::clone::Clone;
 use std::fmt;
 use log::*;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use crate::transactions::{Transaction, Withdrawal, Deposit, Chargeback, Resolve, Dispute};
 use crate::balance::ClientBalanceRegistry;
 
@@ -23,13 +24,13 @@ impl std::error::Error for TransactionManagerError {}
 pub struct TransactionManager {
     // TODO: Made this Arc, thinking we may want to paralellize this in the future
     //   and put it behind an Arc<RwLock>
-    balances: Arc<ClientBalanceRegistry>
+    balances: Arc<RwLock<ClientBalanceRegistry>>
 }
 
 impl TransactionManager {
     pub fn new() -> Self {
         Self {
-            balances: Arc::new(ClientBalanceRegistry::new())
+            balances: Arc::new(RwLock::new(ClientBalanceRegistry::new()))
         }
     }
 
@@ -45,8 +46,10 @@ impl TransactionManager {
         }
     }
 
-    pub fn retrieve_client_balances(&self) -> Arc<ClientBalanceRegistry> {
-        self.balances.clone()
+    pub fn retrieve_client_balances(&self) -> ClientBalanceRegistry {
+        let balance = self.balances.read().unwrap();
+
+        (*balance).clone()
     }
 
     fn handle_withdrawal(&mut self, w: &Withdrawal) -> Result<(), TransactionManagerError> {
@@ -57,6 +60,13 @@ impl TransactionManager {
 
     fn handle_deposit(&mut self, d: &Deposit) -> Result<(), TransactionManagerError> {
         debug!("{d:?}");
+
+        let mut registry = self.balances.write().unwrap();
+
+        let client_account = registry.client_balances.entry(d.client).or_default();
+
+        client_account.total += d.amount;
+        client_account.available += d.amount;
 
         Ok(())
     }
@@ -106,9 +116,9 @@ mod tests {
         tm.attempt_insertion(&withdrawal).unwrap();
 
         let mut internal = HashMap::new();
-        let client_1_balance = ClientBalance::new(20.0, 0.0, 0.0, 0.0);
+        let client_1_balance = ClientBalance::new(20.0, 0.0, 20.0, false);
         internal.insert(1, client_1_balance);
-        let expected_balances = Arc::new(ClientBalanceRegistry::load_registry(internal));
+        let expected_balances = ClientBalanceRegistry::load_registry(internal);
 
         let actual_balance = tm.retrieve_client_balances();
 

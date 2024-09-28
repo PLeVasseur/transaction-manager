@@ -1,20 +1,23 @@
 use std::collections::HashMap;
 
-#[derive(Debug, PartialEq)]
+// TODO: Consider _not_ implementing Clone here when I've
+// better fleshed out how to return a reference to this
+// from TransactionManager
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ClientBalanceRegistry {
-    client_balances: HashMap<u16, ClientBalance>
+    pub client_balances: HashMap<u16, ClientBalance>
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ClientBalance {
     pub available: f64,
     pub held: f64,
     pub total: f64,
-    pub locked: f64
+    pub locked: bool
 }
 
 impl ClientBalance {
-    pub fn new(available: f64, held: f64, total: f64, locked: f64) -> Self {
+    pub fn new(available: f64, held: f64, total: f64, locked: bool) -> Self {
         Self {
             available,
             held,
