@@ -1,39 +1,39 @@
 use serde::de::{self, Deserializer};
 use serde::{Deserialize};
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Deposit {
     pub client: u16,
     pub tx: u32,
     pub amount: f64,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Withdrawal {
     pub client: u16,
     pub tx: u32,
     pub amount: f64,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Dispute {
     pub client: u16,
     pub tx: u32,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Resolve {
     pub client: u16,
     pub tx: u32,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Chargeback {
     pub client: u16,
     pub tx: u32,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Transaction {
     Deposit(Deposit),
     Withdrawal(Withdrawal),
