@@ -3,20 +3,25 @@ use std::fmt;
 use log::*;
 use std::sync::{Arc, RwLock};
 use crate::transactions::{Transaction, Withdrawal, Deposit, Chargeback, Resolve, Dispute};
+use crate::history::TransactionHistory;
 use crate::balance::ClientBalanceRegistry;
 
 #[derive(Debug, PartialEq)]
 pub enum TransactionManagerError {
     // TODO: Consider if we want something more sophisticated
     InvalidTransaction(String),
-    InsufficientFunds(f64)
+    InsufficientFunds(f64),
+    AccountLocked(String),
+    DuplicateTransactionId(u32),
 }
 
 impl fmt::Display for TransactionManagerError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             TransactionManagerError::InvalidTransaction(reason) => write!(f, "InvalidTransaction: {reason}"),
-            TransactionManagerError::InsufficientFunds(insufficient_amount) => write!(f, "InsufficientFunds({insufficient_amount}")
+            TransactionManagerError::InsufficientFunds(insufficient_amount) => write!(f, "InsufficientFunds({insufficient_amount}"),
+            TransactionManagerError::AccountLocked(reason) => write!(f, "AccountLocked({reason})"),
+            TransactionManagerError::DuplicateTransactionId(duped_id) => write!(f, "DuplicateTransactionId({duped_id}"),
         }
     }
 }
@@ -27,18 +32,24 @@ pub struct TransactionManager {
     // TODO: Made this an Arc<RwLock>, thinking we may have multiple
     // concurrent requests to record transactions 
     // (although, there's probably a better way to do that still!)
-    balances: Arc<RwLock<ClientBalanceRegistry>>
+    balances: Arc<RwLock<ClientBalanceRegistry>>,
+    history: TransactionHistory
 }
 
 impl TransactionManager {
     pub fn new() -> Self {
         Self {
-            balances: Arc::new(RwLock::new(ClientBalanceRegistry::new()))
+            balances: Arc::new(RwLock::new(ClientBalanceRegistry::new())),
+            history: TransactionHistory::new(),
         }
     }
 
     pub fn record_transaction(&mut self, t: &Transaction) -> Result<(), TransactionManagerError> {
         debug!("Transaction: {t:?}");
+
+        // TODO: I'd like to reject duplicate transactions here, but because of how I currently
+        // have the id setup as a part of each individual transaction type, I cannot
+        // So I'll have to have some duplicate code in each of the below methods unfortunately
 
         match t {
             Transaction::Withdrawal(w) => self.handle_withdrawal(w),
@@ -55,8 +66,18 @@ impl TransactionManager {
         (*balance).clone()
     }
 
+    fn duped_transaction(&self, tx: &u32) -> Result<(), TransactionManagerError> {
+        if self.history.get(tx).is_some() {
+            return Err(TransactionManagerError::DuplicateTransactionId(tx.clone()));
+        }
+
+        Ok(())
+    }
+
     fn handle_withdrawal(&mut self, w: &Withdrawal) -> Result<(), TransactionManagerError> {
         debug!("{w:?}");
+
+        self.duped_transaction(&w.tx)?;
 
         let mut registry = self.balances.write().unwrap();
 
@@ -80,6 +101,8 @@ impl TransactionManager {
     fn handle_deposit(&mut self, d: &Deposit) -> Result<(), TransactionManagerError> {
         debug!("{d:?}");
 
+        self.duped_transaction(&d.tx)?;
+
         let mut registry = self.balances.write().unwrap();
 
         let client_account = registry.client_balances.entry(d.client).or_default();
@@ -96,17 +119,23 @@ impl TransactionManager {
     fn handle_chargeback(&mut self, c: &Chargeback) -> Result<(), TransactionManagerError> {
         debug!("{c:?}");
 
+        self.duped_transaction(&c.tx)?;
+
         Ok(())
     }
 
     fn handle_dispute(&mut self, d: &Dispute) -> Result<(), TransactionManagerError> {
         debug!("{d:?}");
 
+        self.duped_transaction(&d.tx)?;
+
         Ok(())
     }
 
     fn handle_resolve(&mut self, r: &Resolve) -> Result<(), TransactionManagerError> {
         debug!("{r:?}");
+
+        self.duped_transaction(&r.tx)?;
 
         Ok(())
     }
@@ -173,7 +202,6 @@ mod tests {
 
         let mut tm = TransactionManager::new();
 
-
         let transactions = vec![
             Transaction::Deposit(Deposit::new(2, 3, 2.0)),
             Transaction::Deposit(Deposit::new(1, 1, 32.0)),
@@ -198,7 +226,7 @@ mod tests {
     }
 
     #[test]
-    fn test_insufficient_funds_for_withdrawal() {
+    fn test_insufficient_funds_for_withdrawal_first_operation() {
         test_setup();
 
         let mut tm = TransactionManager::new();
@@ -207,6 +235,46 @@ mod tests {
 
         let err = tm.record_transaction(&transaction).unwrap_err();
         assert_eq!(err, TransactionManagerError::InsufficientFunds(200.0));
+
+        let client_2_balance = ClientBalance::new(0.0, 0.0, 0.0, false);
+        let internal = HashMap::from([
+          (2, client_2_balance),
+        ]);
+
+        let expected_balances = ClientBalanceRegistry::load_registry(internal);
+
+        let actual_balance = tm.retrieve_client_balances();
+
+        assert_eq!(actual_balance, expected_balances);
+    }
+
+    #[test]
+    fn test_simple_dispute() {
+        test_setup();
+
+        let mut tm = TransactionManager::new();
+
+        let transactions = vec![
+            Transaction::Deposit(Deposit::new(2, 3, 2.0)),
+            Transaction::Deposit(Deposit::new(1, 1, 32.0)),
+            Transaction::Dispute(Dispute::new(1, 3)),
+        ];
+
+        for transaction in &transactions {
+            tm.record_transaction(transaction).unwrap();
+        }
+
+        let client_1_balance = ClientBalance::new(12.0, 0.0, 12.0, false);
+        let client_2_balance = ClientBalance::new(1.0, 0.0, 1.0, false);
+        let internal = HashMap::from([
+          (1, client_1_balance),
+          (2, client_2_balance),
+        ]);
+        let expected_balances = ClientBalanceRegistry::load_registry(internal);
+
+        let actual_balance = tm.retrieve_client_balances();
+
+        assert_eq!(actual_balance, expected_balances);
     }
 }
 
