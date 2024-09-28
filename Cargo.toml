@@ -1,0 +1,36 @@
+[workspace]
+resolver = "2"
+members = [
+	"transaction-manager-lib",
+	"transaction-manager-cli"
+]
+
+[workspace.package]
+rust-version = "1.76.0"
+version = "0.1.0"
+repository = "https://github.com/PLeVasseur/transaction-manager"
+homepage = "https://github.com/PLeVasseur/transaction-manager"
+edition = "2021"
+keywords = ["finance", "accounting", "transaction", "manager", "cli"]
+license = "MIT"
+
+[workspace.dependencies]
+
+[profile.dev]
+debug = true
+opt-level = 0
+
+[profile.fast]
+inherits = "release"
+opt-level = 3
+debug = true
+debug-assertions = true
+overflow-checks = true
+lto = false
+
+[profile.release]
+debug = false     # If you want debug symbol in release mode, set the env variable: RUSTFLAGS=-g
+lto = "fat"
+codegen-units = 1
+opt-level = 3
+panic = "abort"
