@@ -11,7 +11,7 @@ pub enum TransactionManagerError {
     // TODO: Consider if we want something more sophisticated
     InvalidTransaction(String),
     InsufficientFunds(f64),
-    AccountLocked(String),
+    AccountLocked,
     DuplicateTransactionId(u32),
     DisputedTransactionDoesNotExist(u32)
 }
@@ -21,7 +21,7 @@ impl fmt::Display for TransactionManagerError {
         match self {
             TransactionManagerError::InvalidTransaction(reason) => write!(f, "InvalidTransaction: {reason}"),
             TransactionManagerError::InsufficientFunds(insufficient_amount) => write!(f, "InsufficientFunds({insufficient_amount}"),
-            TransactionManagerError::AccountLocked(reason) => write!(f, "AccountLocked({reason})"),
+            TransactionManagerError::AccountLocked => write!(f, "AccountLocked"),
             TransactionManagerError::DuplicateTransactionId(duped_id) => write!(f, "DuplicateTransactionId({duped_id}"),
             TransactionManagerError::DisputedTransactionDoesNotExist(tx) => write!(f, "DisputedTransactionDoesNotExist({tx}"),
         }
@@ -87,7 +87,7 @@ impl TransactionManager {
         trace!("client_account, prior: {client_account:?}");
 
         if client_account.locked {
-            return Err(TransactionManagerError::AccountLocked("Account locked".to_string()));
+            return Err(TransactionManagerError::AccountLocked);
         }
 
         let remaining_amount = client_account.available - w.amount;
@@ -119,7 +119,7 @@ impl TransactionManager {
         trace!("client_account, prior: {client_account:?}");
 
         if client_account.locked {
-            return Err(TransactionManagerError::AccountLocked("Account locked".to_string()));
+            return Err(TransactionManagerError::AccountLocked);
         }
 
         client_account.total += d.amount;
@@ -150,7 +150,7 @@ impl TransactionManager {
         trace!("client_account, prior: {client_account:?}");
 
         if client_account.locked {
-            return Err(TransactionManagerError::AccountLocked("Account locked".to_string()));
+            return Err(TransactionManagerError::AccountLocked);
         }
 
         let disputed_transaction = self.history.get(&d.tx);
@@ -188,7 +188,7 @@ impl TransactionManager {
         trace!("client_account, prior: {client_account:?}");
 
         if client_account.locked {
-            return Err(TransactionManagerError::AccountLocked("Account locked".to_string()));
+            return Err(TransactionManagerError::AccountLocked);
         }
 
         let disputed_transaction = self.history.get(&c.tx);
@@ -222,7 +222,7 @@ impl TransactionManager {
         trace!("client_account, prior: {client_account:?}");
 
         if client_account.locked {
-            return Err(TransactionManagerError::AccountLocked("Account locked".to_string()));
+            return Err(TransactionManagerError::AccountLocked);
         }
 
         let disputed_transaction = self.history.get(&r.tx);
@@ -423,6 +423,68 @@ mod tests {
         }
 
         let client_1_balance = ClientBalance::new(0.0, 0.0, 0.0, true, HashSet::new());
+        let internal = HashMap::from([
+          (1, client_1_balance),
+        ]);
+        let expected_balances = ClientBalanceRegistry::load_registry(internal);
+
+        let actual_balance = tm.retrieve_client_balances();
+
+        assert_eq!(actual_balance, expected_balances);
+    }
+
+    #[test]
+    fn test_chargeback_blocks_transactions() {
+        test_setup();
+
+        let mut tm = TransactionManager::new();
+
+        let transactions = vec![
+            Transaction::Deposit(Deposit::new(1, 1, 32.0)),
+            Transaction::Dispute(Dispute::new(1, 1)),
+            Transaction::Chargeback(Chargeback::new(1, 1)),
+        ];
+
+        for transaction in &transactions {
+            tm.record_transaction(transaction).unwrap();
+        }
+
+        let blocked_transaction = Transaction::Deposit(Deposit::new(1, 2, 42.0));
+        let err = tm.record_transaction(&blocked_transaction).unwrap_err();
+
+        assert_eq!(err, TransactionManagerError::AccountLocked);
+
+        let client_1_balance = ClientBalance::new(0.0, 0.0, 0.0, true, HashSet::new());
+        let internal = HashMap::from([
+          (1, client_1_balance),
+        ]);
+        let expected_balances = ClientBalanceRegistry::load_registry(internal);
+
+        let actual_balance = tm.retrieve_client_balances();
+
+        assert_eq!(actual_balance, expected_balances);
+    }
+
+    #[test]
+    fn test_block_duplicated_transactions() {
+        test_setup();
+
+        let mut tm = TransactionManager::new();
+
+        let transactions = vec![
+            Transaction::Deposit(Deposit::new(1, 1, 32.0)),
+        ];
+
+        for transaction in &transactions {
+            tm.record_transaction(transaction).unwrap();
+        }
+
+        let blocked_transaction = Transaction::Deposit(Deposit::new(1, 1, 42.0));
+        let err = tm.record_transaction(&blocked_transaction).unwrap_err();
+
+        assert_eq!(err, TransactionManagerError::DuplicateTransactionId(1));
+
+        let client_1_balance = ClientBalance::new(32.0, 0.0, 32.0, false, HashSet::new());
         let internal = HashMap::from([
           (1, client_1_balance),
         ]);
