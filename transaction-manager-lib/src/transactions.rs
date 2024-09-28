@@ -8,11 +8,31 @@ pub struct Deposit {
     pub amount: f64,
 }
 
+impl Deposit {
+    pub fn new(client: u16, tx: u32, amount: f64) -> Self {
+        Self {
+            client,
+            tx,
+            amount
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Withdrawal {
     pub client: u16,
     pub tx: u32,
     pub amount: f64,
+}
+
+impl Withdrawal {
+    pub fn new(client: u16, tx: u32, amount: f64) -> Self {
+        Self {
+            client,
+            tx,
+            amount
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -21,16 +41,43 @@ pub struct Dispute {
     pub tx: u32,
 }
 
+impl Dispute {
+    pub fn new(client: u16, tx: u32) -> Self {
+        Self {
+            client,
+            tx,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Resolve {
     pub client: u16,
     pub tx: u32,
 }
 
+impl Resolve {
+    pub fn new(client: u16, tx: u32) -> Self {
+        Self {
+            client,
+            tx,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Chargeback {
     pub client: u16,
     pub tx: u32,
+}
+
+impl Chargeback {
+    pub fn new(client: u16, tx: u32) -> Self {
+        Self {
+            client,
+            tx,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

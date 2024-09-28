@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
+#[derive(Debug, PartialEq)]
 pub struct ClientBalanceRegistry {
-    pub client_balances: HashMap<u16, ClientBalance>
+    client_balances: HashMap<u16, ClientBalance>
 }
 
+#[derive(Debug, PartialEq)]
 pub struct ClientBalance {
     pub available: f64,
     pub held: f64,
@@ -11,10 +13,28 @@ pub struct ClientBalance {
     pub locked: f64
 }
 
+impl ClientBalance {
+    pub fn new(available: f64, held: f64, total: f64, locked: f64) -> Self {
+        Self {
+            available,
+            held,
+            total,
+            locked
+        }
+    }
+}
+
 impl ClientBalanceRegistry {
     pub fn new() -> Self {
         Self {
             client_balances: HashMap::new()
+        }
+    }
+
+    #[cfg(test)]
+    pub fn load_registry(client_balances: HashMap<u16, ClientBalance>) -> Self {
+        Self {
+            client_balances
         }
     }
 
