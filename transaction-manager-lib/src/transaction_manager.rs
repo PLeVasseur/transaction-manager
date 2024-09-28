@@ -13,6 +13,7 @@ pub enum TransactionManagerError {
     InsufficientFunds(f64),
     AccountLocked(String),
     DuplicateTransactionId(u32),
+    DisputedTransactionDoesNotExist(u32)
 }
 
 impl fmt::Display for TransactionManagerError {
@@ -22,6 +23,7 @@ impl fmt::Display for TransactionManagerError {
             TransactionManagerError::InsufficientFunds(insufficient_amount) => write!(f, "InsufficientFunds({insufficient_amount}"),
             TransactionManagerError::AccountLocked(reason) => write!(f, "AccountLocked({reason})"),
             TransactionManagerError::DuplicateTransactionId(duped_id) => write!(f, "DuplicateTransactionId({duped_id}"),
+            TransactionManagerError::DisputedTransactionDoesNotExist(tx) => write!(f, "DisputedTransactionDoesNotExist({tx}"),
         }
     }
 }
@@ -84,6 +86,10 @@ impl TransactionManager {
         let client_account = registry.client_balances.entry(w.client).or_default();
         trace!("client_account, prior: {client_account:?}");
 
+        if client_account.locked {
+            return Err(TransactionManagerError::AccountLocked("Account locked".to_string()));
+        }
+
         let remaining_amount = client_account.available - w.amount;
 
         if remaining_amount < 0.0 {
@@ -94,6 +100,8 @@ impl TransactionManager {
         client_account.available -= w.amount;
 
         trace!("client_account, after: {client_account:?}");
+
+        self.history.insert(w.tx, Transaction::Withdrawal(w.clone()));
 
         Ok(())
     }
@@ -108,26 +116,77 @@ impl TransactionManager {
         let client_account = registry.client_balances.entry(d.client).or_default();
         trace!("client_account, prior: {client_account:?}");
 
+        if client_account.locked {
+            return Err(TransactionManagerError::AccountLocked("Account locked".to_string()));
+        }
+
         client_account.total += d.amount;
         client_account.available += d.amount;
 
         trace!("client_account, after: {client_account:?}");
 
-        Ok(())
-    }
-
-    fn handle_chargeback(&mut self, c: &Chargeback) -> Result<(), TransactionManagerError> {
-        debug!("{c:?}");
-
-        self.duped_transaction(&c.tx)?;
+        self.history.insert(d.tx, Transaction::Deposit(d.clone()));
 
         Ok(())
     }
 
+    // TODO: It seems to me that disputes really only apply to deposits, right?
+    // When I read the text it seems to indicate that, e.g. "This means
+    // that the clients available funds should decrease by the amount disputed"
+    // => Performing this operation on a transaction that's a withdrawal would then
+    // seem to mean that we're decreasing the available funds, or would we in that
+    // case be increasing the available funds? Hmm. Let's start by considering
+    // only deposits and revisit
     fn handle_dispute(&mut self, d: &Dispute) -> Result<(), TransactionManagerError> {
         debug!("{d:?}");
 
-        self.duped_transaction(&d.tx)?;
+        let mut registry = self.balances.write().unwrap();
+
+        let client_account = registry.client_balances.entry(d.client).or_default();
+        trace!("client_account, prior: {client_account:?}");
+
+        if client_account.locked {
+            return Err(TransactionManagerError::AccountLocked("Account locked".to_string()));
+        }
+
+        // TODO: Look up the disputed transaction, then perform logic to hold funds as necessary
+        let disputed_transaction = self.history.get(&d.tx);
+
+        // Assuming that disputes, resolves, and chargebacks only apply to deposits,
+        // which seems to make sense
+        let Some(Transaction::Deposit(dep)) = disputed_transaction else {
+            return Err(TransactionManagerError::DisputedTransactionDoesNotExist(d.tx));
+        };
+
+        client_account.available -= dep.amount;
+        client_account.held += dep.amount;
+
+        client_account.disputed_transactions.insert(d.tx);
+
+        Ok(())
+    }
+
+    // TODO: It would appear that there's not a description of what operations should
+    // be allowed if an account is locked / frozen (as far as I can tell).
+    // => ASSUMPTION: Locked accounts can have not operations performed on them,
+    //                perhaps they need some sort of manual intervention
+    fn handle_chargeback(&mut self, c: &Chargeback) -> Result<(), TransactionManagerError> {
+        debug!("{c:?}");
+
+        // TODO: Need to allow like... a single dispute at once?
+
+        let mut registry = self.balances.write().unwrap();
+
+        let client_account = registry.client_balances.entry(c.client).or_default();
+        trace!("client_account, prior: {client_account:?}");
+
+        if client_account.locked {
+            return Err(TransactionManagerError::AccountLocked("Account locked".to_string()));
+        }
+
+        // TODO: Logic here on looking up disputed transaction, verifying
+
+        client_account.locked = true;
 
         Ok(())
     }
@@ -135,7 +194,20 @@ impl TransactionManager {
     fn handle_resolve(&mut self, r: &Resolve) -> Result<(), TransactionManagerError> {
         debug!("{r:?}");
 
-        self.duped_transaction(&r.tx)?;
+        // TODO: Need to allow like... a single dispute at once?
+
+        self.history.insert(r.tx, Transaction::Resolve(r.clone()));
+
+        let mut registry = self.balances.write().unwrap();
+
+        let client_account = registry.client_balances.entry(r.client).or_default();
+        trace!("client_account, prior: {client_account:?}");
+
+        if client_account.locked {
+            return Err(TransactionManagerError::AccountLocked("Account locked".to_string()));
+        }
+
+        // TODO: Logic here on looking up disputed transaction, verifying
 
         Ok(())
     }
@@ -145,7 +217,7 @@ impl TransactionManager {
 mod tests {
     use super::*;
     use std::sync::Once;
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
     use crate::balance::{ClientBalance, ClientBalanceRegistry};
     use crate::transactions::{Transaction, Deposit, Withdrawal, Chargeback, Dispute, Resolve};
 
@@ -185,7 +257,7 @@ mod tests {
         tm.record_transaction(&withdrawal).unwrap();
 
         let mut internal = HashMap::new();
-        let client_1_balance = ClientBalance::new(12.0, 0.0, 12.0, false);
+        let client_1_balance = ClientBalance::new(12.0, 0.0, 12.0, false, HashSet::new());
         internal.insert(1, client_1_balance);
         let expected_balances = ClientBalanceRegistry::load_registry(internal);
 
@@ -212,8 +284,8 @@ mod tests {
         for transaction in &transactions {
             tm.record_transaction(transaction).unwrap();
         }
-        let client_1_balance = ClientBalance::new(12.0, 0.0, 12.0, false);
-        let client_2_balance = ClientBalance::new(1.0, 0.0, 1.0, false);
+        let client_1_balance = ClientBalance::new(12.0, 0.0, 12.0, false, HashSet::new());
+        let client_2_balance = ClientBalance::new(1.0, 0.0, 1.0, false, HashSet::new());
         let internal = HashMap::from([
           (1, client_1_balance),
           (2, client_2_balance),
@@ -236,7 +308,7 @@ mod tests {
         let err = tm.record_transaction(&transaction).unwrap_err();
         assert_eq!(err, TransactionManagerError::InsufficientFunds(200.0));
 
-        let client_2_balance = ClientBalance::new(0.0, 0.0, 0.0, false);
+        let client_2_balance = ClientBalance::new(0.0, 0.0, 0.0, false, HashSet::new());
         let internal = HashMap::from([
           (2, client_2_balance),
         ]);
@@ -255,20 +327,17 @@ mod tests {
         let mut tm = TransactionManager::new();
 
         let transactions = vec![
-            Transaction::Deposit(Deposit::new(2, 3, 2.0)),
             Transaction::Deposit(Deposit::new(1, 1, 32.0)),
-            Transaction::Dispute(Dispute::new(1, 3)),
+            Transaction::Dispute(Dispute::new(1, 1)),
         ];
 
         for transaction in &transactions {
             tm.record_transaction(transaction).unwrap();
         }
 
-        let client_1_balance = ClientBalance::new(12.0, 0.0, 12.0, false);
-        let client_2_balance = ClientBalance::new(1.0, 0.0, 1.0, false);
+        let client_1_balance = ClientBalance::new(0.0, 32.0, 32.0, false, HashSet::from([1]));
         let internal = HashMap::from([
           (1, client_1_balance),
-          (2, client_2_balance),
         ]);
         let expected_balances = ClientBalanceRegistry::load_registry(internal);
 

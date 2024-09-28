@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use crate::transactions::Transaction;
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 
 pub struct TransactionHistory {
     history: HashMap<u32, Transaction>
@@ -19,6 +19,12 @@ impl Deref for TransactionHistory {
 
     fn deref(&self) -> &Self::Target {
         &self.history
+    }
+}
+
+impl DerefMut for TransactionHistory {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.history
     }
 }
 

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 // TODO: Consider _not_ implementing Clone here when I've
 // better fleshed out how to return a reference to this
@@ -14,16 +14,18 @@ pub struct ClientBalance {
     pub available: f64,
     pub held: f64,
     pub total: f64,
-    pub locked: bool
+    pub locked: bool,
+    pub disputed_transactions: HashSet<u32>
 }
 
 impl ClientBalance {
-    pub fn new(available: f64, held: f64, total: f64, locked: bool) -> Self {
+    pub fn new(available: f64, held: f64, total: f64, locked: bool, disputed_transactions: HashSet<u32>) -> Self {
         Self {
             available,
             held,
             total,
-            locked
+            locked,
+            disputed_transactions
         }
     }
 }
