@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-csv = "1.3.0"
-clap = {version = "4.5.18", features = ["derive"]}
+csv = { version = "1.3.0" }
+clap = { version = "4.5.18", features = ["derive"] }
+env_logger = { version = "0.11.5" }
+log = { workspace = true }
 transaction-manager-lib = { workspace = true }

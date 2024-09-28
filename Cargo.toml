@@ -15,6 +15,7 @@ keywords = ["finance", "accounting", "transaction", "manager", "cli"]
 license = "MIT"
 
 [workspace.dependencies]
+log = { version = "0.4.22" }
 transaction-manager-lib = { path = "transaction-manager-lib" }
 
 [profile.dev]

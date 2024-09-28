@@ -1,4 +1,5 @@
 use std::fmt;
+use log::*;
 use crate::transactions::Transaction;
 use crate::balance::ClientBalanceRegistry;
 
@@ -26,7 +27,7 @@ impl TransactionManager {
     }
 
     pub fn attempt_insertion(&mut self, t: &Transaction) -> Result<(), TransactionManagerError> {
-        println!("Transaction: {t:?}");
+        debug!("Transaction: {t:?}");
 
         Ok(())
     }

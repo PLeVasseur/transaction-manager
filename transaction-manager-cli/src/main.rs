@@ -4,22 +4,25 @@ use std::error::Error;
 use csv::ReaderBuilder;
 use transaction_manager_lib::transactions::{Transaction};
 use transaction_manager_lib::transaction_manager::{TransactionManager};
+use log::*;
 
 mod cli;
 
 fn main() -> Result<(), Box<dyn Error>> {
+    env_logger::init();
+    
     let cli = cli::Cli::parse();
-    println!("cli: {:?}", cli.input);
+    trace!("cli: {:?}", cli.input);
     let file = File::open(cli.input)?;
-    // Configure the CSV reader to trim headers and fields of whitespace
+    // Configuring to make sure we trim all whitespace from headers and fields
     let mut rdr = ReaderBuilder::new()
-        .trim(csv::Trim::All) // Trims all fields including headers
+        .trim(csv::Trim::All)
         .from_reader(file);
 
     let mut transaction_manager = TransactionManager::new();
 
     for result in rdr.deserialize::<Transaction>() {
-        println!("result: {result:?}");
+        debug!("result: {result:?}");
 
         let Ok(transaction) = result else {
             // If we get a malformed transaction, we just
@@ -27,16 +30,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             continue;
         };
 
-        println!("transaction: {transaction:?}");
+        debug!("transaction: {transaction:?}");
 
         if let Err(e) = transaction_manager.attempt_insertion(&transaction) {
-            eprintln!("Transaction failed to be inserted: transaction: {transaction:?} err: {e:?}");
+            warn!("Transaction failed to be inserted: transaction: {transaction:?} err: {e:?}");
         }
     }
 
     let client_balance_registry = transaction_manager.retrieve_client_balances();
-
-    println!("Hello, world!");
 
     println!("{}", client_balance_registry.to_csv());
 
