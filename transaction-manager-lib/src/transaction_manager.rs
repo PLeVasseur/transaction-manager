@@ -82,7 +82,7 @@ impl TransactionManager {
 
     fn duped_transaction(&self, tx: &u32) -> Result<(), TransactionManagerError> {
         if self.history.get(tx).is_some() {
-            return Err(TransactionManagerError::DuplicateTransactionId(tx.clone()));
+            return Err(TransactionManagerError::DuplicateTransactionId(*tx));
         }
 
         Ok(())
@@ -274,6 +274,12 @@ impl TransactionManager {
         trace!("client_account, after: {client_account:?}");
 
         Ok(())
+    }
+}
+
+impl Default for TransactionManager {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
