@@ -5,16 +5,18 @@ use std::sync::{Arc, RwLock};
 use crate::transactions::{Transaction, Withdrawal, Deposit, Chargeback, Resolve, Dispute};
 use crate::balance::ClientBalanceRegistry;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum TransactionManagerError {
     // TODO: Consider if we want something more sophisticated
-    InvalidTransaction(String)
+    InvalidTransaction(String),
+    InsufficientFunds(f64)
 }
 
 impl fmt::Display for TransactionManagerError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            TransactionManagerError::InvalidTransaction(reason) => write!(f, "Invalid transaction: {reason}"),
+            TransactionManagerError::InvalidTransaction(reason) => write!(f, "InvalidTransaction: {reason}"),
+            TransactionManagerError::InsufficientFunds(insufficient_amount) => write!(f, "InsufficientFunds({insufficient_amount}")
         }
     }
 }
@@ -53,9 +55,6 @@ impl TransactionManager {
         (*balance).clone()
     }
 
-    // Documenting an assumption here:
-    //   * given the lack of direction to refuse withdrawals which would make the
-    //     total negative, I've chosen to allow account balances to go negative
     fn handle_withdrawal(&mut self, w: &Withdrawal) -> Result<(), TransactionManagerError> {
         debug!("{w:?}");
 
@@ -63,6 +62,12 @@ impl TransactionManager {
 
         let client_account = registry.client_balances.entry(w.client).or_default();
         trace!("client_account, prior: {client_account:?}");
+
+        let remaining_amount = client_account.available - w.amount;
+
+        if remaining_amount < 0.0 {
+            return Err(TransactionManagerError::InsufficientFunds(remaining_amount * -1.0));
+        }
 
         client_account.total -= w.amount;
         client_account.available -= w.amount;
@@ -118,6 +123,9 @@ mod tests {
     // TODO: Consider a few corner cases here
     // * rejecting transaction IDs we've already seen?
     // * rejecting if amount is negative?
+    // * handling a withdrawal to an account we're seeing for the first time
+    //   => Should this still create the account, but not place anything or not create the account?
+    //   => For now, I'll go with creating the account
 
     static INIT: Once = Once::new();
     
@@ -167,17 +175,17 @@ mod tests {
 
 
         let transactions = vec![
-            Transaction::Withdrawal(Withdrawal::new(2, 4, 200.0)),
-            Transaction::Deposit(Deposit::new(1, 1, 32.0)),
-            Transaction::Withdrawal(Withdrawal::new(1, 2, 20.0)),
             Transaction::Deposit(Deposit::new(2, 3, 2.0)),
+            Transaction::Deposit(Deposit::new(1, 1, 32.0)),
+            Transaction::Withdrawal(Withdrawal::new(2, 4, 1.0)),
+            Transaction::Withdrawal(Withdrawal::new(1, 2, 20.0)),
         ];
 
         for transaction in &transactions {
             tm.record_transaction(transaction).unwrap();
         }
         let client_1_balance = ClientBalance::new(12.0, 0.0, 12.0, false);
-        let client_2_balance = ClientBalance::new(-198.0, 0.0, -198.0, false);
+        let client_2_balance = ClientBalance::new(1.0, 0.0, 1.0, false);
         let internal = HashMap::from([
           (1, client_1_balance),
           (2, client_2_balance),
@@ -189,5 +197,16 @@ mod tests {
         assert_eq!(actual_balance, expected_balances);
     }
 
+    #[test]
+    fn test_insufficient_funds_for_withdrawal() {
+        test_setup();
+
+        let mut tm = TransactionManager::new();
+
+        let transaction = Transaction::Withdrawal(Withdrawal::new(2, 4, 200.0));
+
+        let err = tm.record_transaction(&transaction).unwrap_err();
+        assert_eq!(err, TransactionManagerError::InsufficientFunds(200.0));
+    }
 }
 
