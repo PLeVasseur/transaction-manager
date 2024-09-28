@@ -1,4 +1,4 @@
-pub mod transactions;
 pub mod balance;
-pub mod transaction_manager;
 mod history;
+pub mod transaction_manager;
+pub mod transactions;

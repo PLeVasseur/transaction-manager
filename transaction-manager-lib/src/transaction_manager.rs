@@ -1,10 +1,10 @@
+use crate::balance::ClientBalanceRegistry;
+use crate::history::TransactionHistory;
+use crate::transactions::{Chargeback, Deposit, Dispute, Resolve, Transaction, Withdrawal};
+use log::*;
 use std::clone::Clone;
 use std::fmt;
-use log::*;
 use std::sync::{Arc, RwLock};
-use crate::transactions::{Transaction, Withdrawal, Deposit, Chargeback, Resolve, Dispute};
-use crate::history::TransactionHistory;
-use crate::balance::ClientBalanceRegistry;
 
 #[derive(Debug, PartialEq)]
 pub enum TransactionManagerError {
@@ -20,12 +20,22 @@ pub enum TransactionManagerError {
 impl fmt::Display for TransactionManagerError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            TransactionManagerError::InvalidTransaction(reason) => write!(f, "InvalidTransaction: {reason}"),
-            TransactionManagerError::InsufficientFunds(insufficient_amount) => write!(f, "InsufficientFunds({insufficient_amount}"),
+            TransactionManagerError::InvalidTransaction(reason) => {
+                write!(f, "InvalidTransaction: {reason}")
+            }
+            TransactionManagerError::InsufficientFunds(insufficient_amount) => {
+                write!(f, "InsufficientFunds({insufficient_amount}")
+            }
             TransactionManagerError::AccountLocked => write!(f, "AccountLocked"),
-            TransactionManagerError::DuplicateTransactionId(duped_id) => write!(f, "DuplicateTransactionId({duped_id}"),
-            TransactionManagerError::DisputedTransactionDoesNotExist(tx) => write!(f, "DisputedTransactionDoesNotExist({tx}"),
-            TransactionManagerError::NegativeAmountNotAllowed => write!(f, "NegativeAmountNotAllowed"),
+            TransactionManagerError::DuplicateTransactionId(duped_id) => {
+                write!(f, "DuplicateTransactionId({duped_id}")
+            }
+            TransactionManagerError::DisputedTransactionDoesNotExist(tx) => {
+                write!(f, "DisputedTransactionDoesNotExist({tx}")
+            }
+            TransactionManagerError::NegativeAmountNotAllowed => {
+                write!(f, "NegativeAmountNotAllowed")
+            }
         }
     }
 }
@@ -34,10 +44,10 @@ impl std::error::Error for TransactionManagerError {}
 
 pub struct TransactionManager {
     // TODO: Made this an Arc<RwLock>, thinking we may have multiple
-    // concurrent requests to record transactions 
+    // concurrent requests to record transactions
     // (although, there's probably a better way to do that still!)
     balances: Arc<RwLock<ClientBalanceRegistry>>,
-    history: TransactionHistory
+    history: TransactionHistory,
 }
 
 impl TransactionManager {
@@ -86,7 +96,6 @@ impl TransactionManager {
         Ok(())
     }
 
-
     fn handle_withdrawal(&mut self, w: &Withdrawal) -> Result<(), TransactionManagerError> {
         debug!("{w:?}");
 
@@ -105,7 +114,9 @@ impl TransactionManager {
         let remaining_amount = client_account.available - w.amount;
 
         if remaining_amount < 0.0 {
-            return Err(TransactionManagerError::InsufficientFunds(remaining_amount * -1.0));
+            return Err(TransactionManagerError::InsufficientFunds(
+                remaining_amount * -1.0,
+            ));
         }
 
         client_account.total -= w.amount;
@@ -113,7 +124,8 @@ impl TransactionManager {
 
         trace!("client_account, after: {client_account:?}");
 
-        self.history.insert(w.tx, Transaction::Withdrawal(w.clone()));
+        self.history
+            .insert(w.tx, Transaction::Withdrawal(w.clone()));
 
         trace!("history: {:?}", self.history);
 
@@ -172,7 +184,9 @@ impl TransactionManager {
         // Assuming that disputes, resolves, and chargebacks only apply to deposits,
         // which seems to make sense
         let Some(Transaction::Deposit(dep)) = disputed_transaction else {
-            return Err(TransactionManagerError::DisputedTransactionDoesNotExist(d.tx));
+            return Err(TransactionManagerError::DisputedTransactionDoesNotExist(
+                d.tx,
+            ));
         };
 
         // TODO: Is it possible for this to go negative? Should check
@@ -210,7 +224,9 @@ impl TransactionManager {
         // Assuming that disputes, resolves, and chargebacks only apply to deposits,
         // which seems to make sense
         let Some(Transaction::Deposit(dep)) = disputed_transaction else {
-            return Err(TransactionManagerError::DisputedTransactionDoesNotExist(c.tx));
+            return Err(TransactionManagerError::DisputedTransactionDoesNotExist(
+                c.tx,
+            ));
         };
 
         // TODO: Is it possible for this to go negative? Should check
@@ -244,7 +260,9 @@ impl TransactionManager {
         // Assuming that disputes, resolves, and chargebacks only apply to deposits,
         // which seems to make sense
         let Some(Transaction::Deposit(dep)) = disputed_transaction else {
-            return Err(TransactionManagerError::DisputedTransactionDoesNotExist(r.tx));
+            return Err(TransactionManagerError::DisputedTransactionDoesNotExist(
+                r.tx,
+            ));
         };
 
         // TODO: Is it possible for this to go negative? Should check
@@ -262,10 +280,10 @@ impl TransactionManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Once;
-    use std::collections::{HashMap, HashSet};
     use crate::balance::{ClientBalance, ClientBalanceRegistry};
-    use crate::transactions::{Transaction, Deposit, Withdrawal, Chargeback, Dispute, Resolve};
+    use crate::transactions::{Chargeback, Deposit, Dispute, Resolve, Transaction, Withdrawal};
+    use std::collections::{HashMap, HashSet};
+    use std::sync::Once;
 
     // TODO: Consider a few corner cases here
     // * rejecting transaction IDs we've already seen?
@@ -275,20 +293,16 @@ mod tests {
     //   => For now, I'll go with creating the account
 
     static INIT: Once = Once::new();
-    
+
     fn test_setup() {
         INIT.call_once(|| env_logger::init());
     }
 
     #[test]
-    fn test_rejecting_duplicate_transaction_ids() {
-
-    }
+    fn test_rejecting_duplicate_transaction_ids() {}
 
     #[test]
-    fn test_negative_amount_deposit() {
-        
-    }
+    fn test_negative_amount_deposit() {}
 
     #[test]
     fn test_simple_deposit_withdrawal() {
@@ -332,10 +346,7 @@ mod tests {
         }
         let client_1_balance = ClientBalance::new(12.0, 0.0, 12.0, false, HashSet::new());
         let client_2_balance = ClientBalance::new(1.0, 0.0, 1.0, false, HashSet::new());
-        let internal = HashMap::from([
-          (1, client_1_balance),
-          (2, client_2_balance),
-        ]);
+        let internal = HashMap::from([(1, client_1_balance), (2, client_2_balance)]);
         let expected_balances = ClientBalanceRegistry::load_registry(internal);
 
         let actual_balance = tm.retrieve_client_balances();
@@ -355,9 +366,7 @@ mod tests {
         assert_eq!(err, TransactionManagerError::InsufficientFunds(200.0));
 
         let client_2_balance = ClientBalance::new(0.0, 0.0, 0.0, false, HashSet::new());
-        let internal = HashMap::from([
-          (2, client_2_balance),
-        ]);
+        let internal = HashMap::from([(2, client_2_balance)]);
 
         let expected_balances = ClientBalanceRegistry::load_registry(internal);
 
@@ -382,9 +391,7 @@ mod tests {
         }
 
         let client_1_balance = ClientBalance::new(0.0, 32.0, 32.0, false, HashSet::from([1]));
-        let internal = HashMap::from([
-          (1, client_1_balance),
-        ]);
+        let internal = HashMap::from([(1, client_1_balance)]);
         let expected_balances = ClientBalanceRegistry::load_registry(internal);
 
         let actual_balance = tm.retrieve_client_balances();
@@ -409,9 +416,7 @@ mod tests {
         }
 
         let client_1_balance = ClientBalance::new(32.0, 0.0, 32.0, false, HashSet::new());
-        let internal = HashMap::from([
-          (1, client_1_balance),
-        ]);
+        let internal = HashMap::from([(1, client_1_balance)]);
         let expected_balances = ClientBalanceRegistry::load_registry(internal);
 
         let actual_balance = tm.retrieve_client_balances();
@@ -436,9 +441,7 @@ mod tests {
         }
 
         let client_1_balance = ClientBalance::new(0.0, 0.0, 0.0, true, HashSet::new());
-        let internal = HashMap::from([
-          (1, client_1_balance),
-        ]);
+        let internal = HashMap::from([(1, client_1_balance)]);
         let expected_balances = ClientBalanceRegistry::load_registry(internal);
 
         let actual_balance = tm.retrieve_client_balances();
@@ -468,9 +471,7 @@ mod tests {
         assert_eq!(err, TransactionManagerError::AccountLocked);
 
         let client_1_balance = ClientBalance::new(0.0, 0.0, 0.0, true, HashSet::new());
-        let internal = HashMap::from([
-          (1, client_1_balance),
-        ]);
+        let internal = HashMap::from([(1, client_1_balance)]);
         let expected_balances = ClientBalanceRegistry::load_registry(internal);
 
         let actual_balance = tm.retrieve_client_balances();
@@ -484,9 +485,7 @@ mod tests {
 
         let mut tm = TransactionManager::new();
 
-        let transactions = vec![
-            Transaction::Deposit(Deposit::new(1, 1, 32.0)),
-        ];
+        let transactions = vec![Transaction::Deposit(Deposit::new(1, 1, 32.0))];
 
         for transaction in &transactions {
             tm.record_transaction(transaction).unwrap();
@@ -498,9 +497,7 @@ mod tests {
         assert_eq!(err, TransactionManagerError::DuplicateTransactionId(1));
 
         let client_1_balance = ClientBalance::new(32.0, 0.0, 32.0, false, HashSet::new());
-        let internal = HashMap::from([
-          (1, client_1_balance),
-        ]);
+        let internal = HashMap::from([(1, client_1_balance)]);
         let expected_balances = ClientBalanceRegistry::load_registry(internal);
 
         let actual_balance = tm.retrieve_client_balances();
@@ -514,9 +511,7 @@ mod tests {
 
         let mut tm = TransactionManager::new();
 
-        let transactions = vec![
-            Transaction::Deposit(Deposit::new(1, 1, 32.0)),
-        ];
+        let transactions = vec![Transaction::Deposit(Deposit::new(1, 1, 32.0))];
 
         for transaction in &transactions {
             tm.record_transaction(transaction).unwrap();
@@ -528,9 +523,7 @@ mod tests {
         assert_eq!(err, TransactionManagerError::NegativeAmountNotAllowed);
 
         let client_1_balance = ClientBalance::new(32.0, 0.0, 32.0, false, HashSet::new());
-        let internal = HashMap::from([
-          (1, client_1_balance),
-        ]);
+        let internal = HashMap::from([(1, client_1_balance)]);
         let expected_balances = ClientBalanceRegistry::load_registry(internal);
 
         let actual_balance = tm.retrieve_client_balances();
@@ -538,4 +531,3 @@ mod tests {
         assert_eq!(actual_balance, expected_balances);
     }
 }
-

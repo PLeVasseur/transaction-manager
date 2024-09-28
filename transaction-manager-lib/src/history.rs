@@ -1,16 +1,16 @@
-use std::collections::HashMap;
 use crate::transactions::Transaction;
+use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 
 #[derive(Debug)]
 pub struct TransactionHistory {
-    history: HashMap<u32, Transaction>
+    history: HashMap<u32, Transaction>,
 }
 
 impl TransactionHistory {
     pub fn new() -> Self {
         Self {
-            history: HashMap::new()
+            history: HashMap::new(),
         }
     }
 }
@@ -28,4 +28,3 @@ impl DerefMut for TransactionHistory {
         &mut self.history
     }
 }
-

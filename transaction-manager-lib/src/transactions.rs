@@ -1,5 +1,5 @@
 use serde::de::{self, Deserializer};
-use serde::{Deserialize};
+use serde::Deserialize;
 
 #[derive(Clone, Debug)]
 pub struct Deposit {
@@ -10,11 +10,7 @@ pub struct Deposit {
 
 impl Deposit {
     pub fn new(client: u16, tx: u32, amount: f64) -> Self {
-        Self {
-            client,
-            tx,
-            amount
-        }
+        Self { client, tx, amount }
     }
 }
 
@@ -27,11 +23,7 @@ pub struct Withdrawal {
 
 impl Withdrawal {
     pub fn new(client: u16, tx: u32, amount: f64) -> Self {
-        Self {
-            client,
-            tx,
-            amount
-        }
+        Self { client, tx, amount }
     }
 }
 
@@ -43,10 +35,7 @@ pub struct Dispute {
 
 impl Dispute {
     pub fn new(client: u16, tx: u32) -> Self {
-        Self {
-            client,
-            tx,
-        }
+        Self { client, tx }
     }
 }
 
@@ -58,10 +47,7 @@ pub struct Resolve {
 
 impl Resolve {
     pub fn new(client: u16, tx: u32) -> Self {
-        Self {
-            client,
-            tx,
-        }
+        Self { client, tx }
     }
 }
 
@@ -73,10 +59,7 @@ pub struct Chargeback {
 
 impl Chargeback {
     pub fn new(client: u16, tx: u32) -> Self {
-        Self {
-            client,
-            tx,
-        }
+        Self { client, tx }
     }
 }
 
@@ -101,7 +84,7 @@ impl<'de> Deserialize<'de> for Transaction {
             client: u16,
             tx: u32,
             // Optional, since not all types use the transaction amount
-            amount: Option<f64>, 
+            amount: Option<f64>,
         }
 
         let record = TransactionRecord::deserialize(deserializer)?;

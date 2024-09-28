@@ -1,23 +1,21 @@
 use clap::Parser;
-use std::fs::File;
-use std::error::Error;
 use csv::ReaderBuilder;
-use transaction_manager_lib::transactions::{Transaction};
-use transaction_manager_lib::transaction_manager::{TransactionManager};
 use log::*;
+use std::error::Error;
+use std::fs::File;
+use transaction_manager_lib::transaction_manager::TransactionManager;
+use transaction_manager_lib::transactions::Transaction;
 
 mod cli;
 
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
-    
+
     let cli = cli::Cli::parse();
     trace!("cli: {:?}", cli.input);
     let file = File::open(cli.input)?;
     // Configuring to make sure we trim all whitespace from headers and fields
-    let mut rdr = ReaderBuilder::new()
-        .trim(csv::Trim::All)
-        .from_reader(file);
+    let mut rdr = ReaderBuilder::new().trim(csv::Trim::All).from_reader(file);
 
     let mut transaction_manager = TransactionManager::new();
 
