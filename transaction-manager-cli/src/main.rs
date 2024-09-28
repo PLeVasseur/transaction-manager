@@ -25,8 +25,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         debug!("result: {result:?}");
 
         let Ok(transaction) = result else {
-            // If we get a malformed transaction, we just
-            // continue to read
+            error!("Unable to parse this transaction");
             continue;
         };
 

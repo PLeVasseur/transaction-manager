@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use crate::transactions::Transaction;
 use std::ops::{Deref, DerefMut};
 
+#[derive(Debug)]
 pub struct TransactionHistory {
     history: HashMap<u32, Transaction>
 }

@@ -103,6 +103,8 @@ impl TransactionManager {
 
         self.history.insert(w.tx, Transaction::Withdrawal(w.clone()));
 
+        trace!("history: {:?}", self.history);
+
         Ok(())
     }
 
@@ -127,6 +129,8 @@ impl TransactionManager {
 
         self.history.insert(d.tx, Transaction::Deposit(d.clone()));
 
+        trace!("history: {:?}", self.history);
+
         Ok(())
     }
 
@@ -149,8 +153,8 @@ impl TransactionManager {
             return Err(TransactionManagerError::AccountLocked("Account locked".to_string()));
         }
 
-        // TODO: Look up the disputed transaction, then perform logic to hold funds as necessary
         let disputed_transaction = self.history.get(&d.tx);
+        trace!("disputed_transaction: {disputed_transaction:?}");
 
         // Assuming that disputes, resolves, and chargebacks only apply to deposits,
         // which seems to make sense
@@ -158,10 +162,13 @@ impl TransactionManager {
             return Err(TransactionManagerError::DisputedTransactionDoesNotExist(d.tx));
         };
 
+        // TODO: Is it possible for this to go negative? Should check
         client_account.available -= dep.amount;
         client_account.held += dep.amount;
 
         client_account.disputed_transactions.insert(d.tx);
+
+        trace!("client_account, after: {client_account:?}");
 
         Ok(())
     }
@@ -184,19 +191,30 @@ impl TransactionManager {
             return Err(TransactionManagerError::AccountLocked("Account locked".to_string()));
         }
 
-        // TODO: Logic here on looking up disputed transaction, verifying
+        let disputed_transaction = self.history.get(&c.tx);
+        trace!("disputed_transaction: {disputed_transaction:?}");
+
+        // Assuming that disputes, resolves, and chargebacks only apply to deposits,
+        // which seems to make sense
+        let Some(Transaction::Deposit(dep)) = disputed_transaction else {
+            return Err(TransactionManagerError::DisputedTransactionDoesNotExist(c.tx));
+        };
+
+        // TODO: Is it possible for this to go negative? Should check
+        client_account.total -= dep.amount;
+        client_account.held -= dep.amount;
+
+        let _ = client_account.disputed_transactions.remove(&c.tx);
 
         client_account.locked = true;
+
+        trace!("client_account, after: {client_account:?}");
 
         Ok(())
     }
 
     fn handle_resolve(&mut self, r: &Resolve) -> Result<(), TransactionManagerError> {
         debug!("{r:?}");
-
-        // TODO: Need to allow like... a single dispute at once?
-
-        self.history.insert(r.tx, Transaction::Resolve(r.clone()));
 
         let mut registry = self.balances.write().unwrap();
 
@@ -207,7 +225,22 @@ impl TransactionManager {
             return Err(TransactionManagerError::AccountLocked("Account locked".to_string()));
         }
 
-        // TODO: Logic here on looking up disputed transaction, verifying
+        let disputed_transaction = self.history.get(&r.tx);
+        trace!("disputed_transaction: {disputed_transaction:?}");
+
+        // Assuming that disputes, resolves, and chargebacks only apply to deposits,
+        // which seems to make sense
+        let Some(Transaction::Deposit(dep)) = disputed_transaction else {
+            return Err(TransactionManagerError::DisputedTransactionDoesNotExist(r.tx));
+        };
+
+        // TODO: Is it possible for this to go negative? Should check
+        client_account.available += dep.amount;
+        client_account.held -= dep.amount;
+
+        let _ = client_account.disputed_transactions.remove(&r.tx);
+
+        trace!("client_account, after: {client_account:?}");
 
         Ok(())
     }
@@ -336,6 +369,60 @@ mod tests {
         }
 
         let client_1_balance = ClientBalance::new(0.0, 32.0, 32.0, false, HashSet::from([1]));
+        let internal = HashMap::from([
+          (1, client_1_balance),
+        ]);
+        let expected_balances = ClientBalanceRegistry::load_registry(internal);
+
+        let actual_balance = tm.retrieve_client_balances();
+
+        assert_eq!(actual_balance, expected_balances);
+    }
+
+    #[test]
+    fn test_simple_dispute_resolve() {
+        test_setup();
+
+        let mut tm = TransactionManager::new();
+
+        let transactions = vec![
+            Transaction::Deposit(Deposit::new(1, 1, 32.0)),
+            Transaction::Dispute(Dispute::new(1, 1)),
+            Transaction::Resolve(Resolve::new(1, 1)),
+        ];
+
+        for transaction in &transactions {
+            tm.record_transaction(transaction).unwrap();
+        }
+
+        let client_1_balance = ClientBalance::new(32.0, 0.0, 32.0, false, HashSet::new());
+        let internal = HashMap::from([
+          (1, client_1_balance),
+        ]);
+        let expected_balances = ClientBalanceRegistry::load_registry(internal);
+
+        let actual_balance = tm.retrieve_client_balances();
+
+        assert_eq!(actual_balance, expected_balances);
+    }
+
+    #[test]
+    fn test_simple_dispute_chargeback() {
+        test_setup();
+
+        let mut tm = TransactionManager::new();
+
+        let transactions = vec![
+            Transaction::Deposit(Deposit::new(1, 1, 32.0)),
+            Transaction::Dispute(Dispute::new(1, 1)),
+            Transaction::Chargeback(Chargeback::new(1, 1)),
+        ];
+
+        for transaction in &transactions {
+            tm.record_transaction(transaction).unwrap();
+        }
+
+        let client_1_balance = ClientBalance::new(0.0, 0.0, 0.0, true, HashSet::new());
         let internal = HashMap::from([
           (1, client_1_balance),
         ]);
