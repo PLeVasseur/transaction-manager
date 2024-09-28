@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 // TODO: Consider _not_ implementing Clone here when I've
 // better fleshed out how to return a reference to this
-// from TransactionManager
+// from TransactionManager. Trying to avoid returning
+// an Arc<RwLock<T>>
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ClientBalanceRegistry {
     pub client_balances: HashMap<u16, ClientBalance>

@@ -53,6 +53,9 @@ impl TransactionManager {
         (*balance).clone()
     }
 
+    // Documenting an assumption here:
+    //   * given the lack of direction to refuse withdrawals which would make the
+    //     total negative, I've chosen to allow account balances to go negative
     fn handle_withdrawal(&mut self, w: &Withdrawal) -> Result<(), TransactionManagerError> {
         debug!("{w:?}");
 
@@ -107,6 +110,7 @@ impl TransactionManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Once;
     use std::collections::HashMap;
     use crate::balance::{ClientBalance, ClientBalanceRegistry};
     use crate::transactions::{Transaction, Deposit, Withdrawal, Chargeback, Dispute, Resolve};
@@ -114,9 +118,11 @@ mod tests {
     // TODO: Consider a few corner cases here
     // * rejecting transaction IDs we've already seen?
     // * rejecting if amount is negative?
+
+    static INIT: Once = Once::new();
     
     fn test_setup() {
-        env_logger::init();
+        INIT.call_once(|| env_logger::init());
     }
 
     #[test]
@@ -150,5 +156,38 @@ mod tests {
 
         assert_eq!(actual_balance, expected_balances);
     }
+
+    // TODO: Using test-case would probably simplify this by letting us have various
+    // setups which differ only in the expected input and output
+    #[test]
+    fn test_multiple_clients_deposit_withdrawal() {
+        test_setup();
+
+        let mut tm = TransactionManager::new();
+
+
+        let transactions = vec![
+            Transaction::Withdrawal(Withdrawal::new(2, 4, 200.0)),
+            Transaction::Deposit(Deposit::new(1, 1, 32.0)),
+            Transaction::Withdrawal(Withdrawal::new(1, 2, 20.0)),
+            Transaction::Deposit(Deposit::new(2, 3, 2.0)),
+        ];
+
+        for transaction in &transactions {
+            tm.record_transaction(transaction).unwrap();
+        }
+        let client_1_balance = ClientBalance::new(12.0, 0.0, 12.0, false);
+        let client_2_balance = ClientBalance::new(-198.0, 0.0, -198.0, false);
+        let internal = HashMap::from([
+          (1, client_1_balance),
+          (2, client_2_balance),
+        ]);
+        let expected_balances = ClientBalanceRegistry::load_registry(internal);
+
+        let actual_balance = tm.retrieve_client_balances();
+
+        assert_eq!(actual_balance, expected_balances);
+    }
+
 }
 
