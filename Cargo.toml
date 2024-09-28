@@ -15,6 +15,7 @@ keywords = ["finance", "accounting", "transaction", "manager", "cli"]
 license = "MIT"
 
 [workspace.dependencies]
+transaction-manager-lib = { path = "transaction-manager-lib" }
 
 [profile.dev]
 debug = true
